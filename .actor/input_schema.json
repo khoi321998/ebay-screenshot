@@ -46,26 +46,10 @@
         "waitMs": {
             "title": "Extra wait (ms)",
             "type": "integer",
-            "description": "Settle time after the page is ready, before the screenshot is taken.",
-            "default": 2000,
+            "description": "Settle time after the page is ready, before the screenshot is taken. The readiness checks already wait for content to render, so this is only a safety margin.",
+            "default": 1000,
             "minimum": 0,
             "maximum": 60000
-        },
-        "format": {
-            "title": "Image format",
-            "type": "string",
-            "description": "Screenshot file format.",
-            "default": "png",
-            "enum": ["png", "jpeg"],
-            "enumTitles": ["PNG", "JPEG"]
-        },
-        "jpegQuality": {
-            "title": "JPEG quality",
-            "type": "integer",
-            "description": "Quality of JPEG output (1-100). Ignored for PNG.",
-            "default": 85,
-            "minimum": 1,
-            "maximum": 100
         },
         "maxConcurrency": {
             "title": "Max concurrency",
@@ -82,6 +66,44 @@
             "default": 5,
             "minimum": 0,
             "maximum": 10
+        },
+        "maxRequestsPerCrawl": {
+            "title": "Max requests per run",
+            "type": "integer",
+            "description": "Safety cap on how many pages a single run may capture, retries included. Prevents a huge URL list from consuming the whole budget.",
+            "default": 1000,
+            "minimum": 1
+        },
+        "maxHeightPx": {
+            "title": "Max screenshot height (px)",
+            "type": "integer",
+            "description": "Cap the captured height of full-page screenshots. 0 captures the whole page. An eBay item page is often ~12000px tall but the listing itself ends around 4000px - capping there is much faster and cheaper, and usually the more useful image.",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 32000
+        },
+        "warmUpSession": {
+            "title": "Warm up eBay session",
+            "type": "boolean",
+            "description": "Load the eBay homepage once per proxy session before capturing item pages, so anti-bot cookies are issued first. Required for eBay: with this off, item pages were measured returning HTTP 403 from Akamai on every attempt. Only turn it off when capturing non-eBay sites.",
+            "default": true
+        },
+        "blockTrackers": {
+            "title": "Block trackers and ads",
+            "type": "boolean",
+            "description": "Block analytics, ad and beacon requests. Speeds up capture and cuts residential proxy traffic, which is billed per GB. Does not affect how the page looks.",
+            "default": true
+        },
+        "proxyConfiguration": {
+            "title": "Proxy configuration",
+            "type": "object",
+            "description": "Defaults to US residential proxy, which is what eBay tolerates. Residential traffic is billed per GB, so consider a cheaper group when capturing non-eBay pages.",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+                "apifyProxyCountry": "US"
+            }
         }
     }
 }

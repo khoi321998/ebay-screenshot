@@ -1,0 +1,13 @@
+{
+    "actorKeyValueStoreSchemaVersion": 1,
+    "title": "Screenshot files",
+    "description": "Captured page images, kept separate from the Actor's internal state records.",
+    "collections": {
+        "screenshots": {
+            "title": "Screenshots",
+            "description": "One PNG record per captured page.",
+            "keyPrefix": "screenshot_",
+            "contentTypes": ["image/png"]
+        }
+    }
+}

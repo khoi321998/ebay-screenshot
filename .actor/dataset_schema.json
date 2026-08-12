@@ -1,7 +1,24 @@
 {
     "$schema": "https://apify.com/schemas/v1/dataset.ide.json",
     "actorSpecification": 1,
-    "fields": {},
+    "fields": {
+        "type": "object",
+        "properties": {
+            "url": {
+                "type": "string",
+                "description": "The page that was requested."
+            },
+            "screenshotUrl": {
+                "type": ["string", "null"],
+                "description": "Direct link to the stored image, or null when the capture failed."
+            },
+            "error": {
+                "type": "string",
+                "description": "Present only on failures; the last error message after all retries."
+            }
+        },
+        "required": ["url", "screenshotUrl"]
+    },
     "views": {
         "overview": {
             "title": "Screenshots",
