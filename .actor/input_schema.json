@@ -1,0 +1,87 @@
+{
+    "$schema": "https://apify.com/schemas/v1/input.ide.json",
+    "title": "eBay Screenshot",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "startUrls": {
+            "title": "Start URLs",
+            "type": "array",
+            "description": "Pages to capture, e.g. eBay item or seller pages. Any http(s) URL works.",
+            "editor": "requestListSources",
+            "prefill": [
+                {
+                    "url": "https://www.ebay.com/itm/296977871958"
+                }
+            ]
+        },
+        "urls": {
+            "title": "URLs (plain list)",
+            "type": "array",
+            "description": "Alternative to Start URLs - a plain list of URLs. Both fields are merged and de-duplicated.",
+            "editor": "stringList"
+        },
+        "fullPage": {
+            "title": "Full page screenshot",
+            "type": "boolean",
+            "description": "Capture the whole scrollable page instead of just the viewport. Lazy-loaded images are triggered by scrolling first.",
+            "default": true
+        },
+        "viewportWidth": {
+            "title": "Viewport width",
+            "type": "integer",
+            "description": "Browser viewport width in pixels.",
+            "default": 1920,
+            "minimum": 320,
+            "maximum": 3840
+        },
+        "viewportHeight": {
+            "title": "Viewport height",
+            "type": "integer",
+            "description": "Browser viewport height in pixels.",
+            "default": 1080,
+            "minimum": 240,
+            "maximum": 4320
+        },
+        "waitMs": {
+            "title": "Extra wait (ms)",
+            "type": "integer",
+            "description": "Settle time after the page is ready, before the screenshot is taken.",
+            "default": 2000,
+            "minimum": 0,
+            "maximum": 60000
+        },
+        "format": {
+            "title": "Image format",
+            "type": "string",
+            "description": "Screenshot file format.",
+            "default": "png",
+            "enum": ["png", "jpeg"],
+            "enumTitles": ["PNG", "JPEG"]
+        },
+        "jpegQuality": {
+            "title": "JPEG quality",
+            "type": "integer",
+            "description": "Quality of JPEG output (1-100). Ignored for PNG.",
+            "default": 85,
+            "minimum": 1,
+            "maximum": 100
+        },
+        "maxConcurrency": {
+            "title": "Max concurrency",
+            "type": "integer",
+            "description": "Maximum number of pages captured in parallel. Keep it low to avoid anti-bot blocks.",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 10
+        },
+        "maxRequestRetries": {
+            "title": "Max retries",
+            "type": "integer",
+            "description": "How many times a failed page is retried before it is reported as an error.",
+            "default": 5,
+            "minimum": 0,
+            "maximum": 10
+        }
+    }
+}

@@ -1,0 +1,18 @@
+{
+    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+    "actorSpecification": 1,
+    "name": "ebay-screenshot",
+    "title": "eBay Screenshot",
+    "description": "Captures full-page screenshots of eBay item/seller pages (or any website) and stores them as PNG/JPEG files.",
+    "version": "0.0",
+    "meta": {
+        "templateId": "ts-crawlee-playwright-chrome",
+        "generatedBy": "Claude Code with Claude Opus 5"
+    },
+    "inputSchema": "./input_schema.json",
+    "outputSchema": "./output_schema.json",
+    "storages": {
+        "dataset": "./dataset_schema.json"
+    },
+    "dockerfile": "../Dockerfile"
+}
