@@ -7,7 +7,7 @@
         "startUrls": {
             "title": "Start URLs",
             "type": "array",
-            "description": "Pages to capture, e.g. eBay item or seller pages. Any http(s) URL works.",
+            "description": "Pages to capture, e.g. eBay item or seller pages. Any http(s) URL works.\n\nAny eBay marketplace works — ebay.com, ebay.es, ebay.de, ebay.co.uk, ebay.com.au and so on. The capture stays on the domain you give it: the page is rendered in that site's language and currency, the anti-bot warm-up hits that same domain, and the proxy exits in that country. URLs are used exactly as provided — no query parameters are added or removed.",
             "editor": "requestListSources",
             "prefill": [
                 {
@@ -81,29 +81,6 @@
             "default": 0,
             "minimum": 0,
             "maximum": 32000
-        },
-        "warmUpSession": {
-            "title": "Warm up eBay session",
-            "type": "boolean",
-            "description": "Load the eBay homepage once per proxy session before capturing item pages, so anti-bot cookies are issued first. Required for eBay: with this off, item pages were measured returning HTTP 403 from Akamai on every attempt. Only turn it off when capturing non-eBay sites.",
-            "default": true
-        },
-        "blockTrackers": {
-            "title": "Block trackers and ads",
-            "type": "boolean",
-            "description": "Block analytics, ad and beacon requests. Speeds up capture and cuts residential proxy traffic, which is billed per GB. Does not affect how the page looks.",
-            "default": true
-        },
-        "proxyConfiguration": {
-            "title": "Proxy configuration",
-            "type": "object",
-            "description": "Defaults to US residential proxy, which is what eBay tolerates. Residential traffic is billed per GB, so consider a cheaper group when capturing non-eBay pages.",
-            "editor": "proxy",
-            "default": {
-                "useApifyProxy": true,
-                "apifyProxyGroups": ["RESIDENTIAL"],
-                "apifyProxyCountry": "US"
-            }
         }
     }
 }

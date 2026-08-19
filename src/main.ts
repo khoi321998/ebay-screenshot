@@ -7,14 +7,14 @@
  */
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import { PlaywrightCrawler } from '@crawlee/playwright';
-import type { ProxyConfiguration } from 'apify';
+import { PlaywrightCrawler, ProxyConfiguration } from '@crawlee/playwright';
 import { Actor, KeyValueStore, log } from 'apify';
 
+import { DEFAULT_SITE, siteFor } from './ebay-sites.js';
 import { createPreNavigationHook, logFailedNavigation, markNavigation } from './hooks.js';
 import { expandRemoteSources, normalizeInput } from './input.js';
 import { createRouter } from './routes.js';
-import type { Input, NormalizedInput, ProxyInput, ScreenshotResult } from './types.js';
+import type { Input, NormalizedInput, ScreenshotResult } from './types.js';
 
 await Actor.init();
 
@@ -26,38 +26,48 @@ Actor.on('aborting', async () => {
 });
 
 /**
- * eBay only behaves for US residential IPs, so that is the default - but it is a paid
- * feature, and it is billed per gigabyte. Users capturing non-eBay pages can override it,
- * and an account without residential access degrades to a warning instead of a hard crash.
+ * eBay tolerates residential IPs and little else, so that is what every capture runs on. It is
+ * a paid feature; an account without residential access degrades to a warning and the default
+ * proxy group instead of a hard crash.
  */
 const NO_PROXY_WARNING = 'Running without a proxy - eBay blocks most non-residential IPs, expect failures.';
 
-async function buildProxyConfiguration(requested?: ProxyInput): Promise<ProxyConfiguration | undefined> {
-    const wanted: ProxyInput = requested ?? {
-        useApifyProxy: true,
-        apifyProxyGroups: ['RESIDENTIAL'],
-        apifyProxyCountry: 'US',
-    };
+/**
+ * Builds the proxy for the run, exiting in each marketplace's own country.
+ *
+ * A US IP loads ebay.es fine, but eBay then renders it as it would for an American shopper -
+ * US delivery estimates, prices converted to USD, sometimes a redirect to ebay.com outright -
+ * so the screenshot documents a listing no Spanish buyer would ever see. The country therefore
+ * follows the hostname, not a setting: one Apify configuration per country present in the run,
+ * dispatched per request. Anything that is not an eBay domain falls back to the default site's
+ * country, which keeps plain website captures behaving as they did before.
+ */
+async function buildProxyConfiguration(urls: string[]): Promise<ProxyConfiguration | undefined> {
+    const countries = [...new Set(urls.map((url) => siteFor(url).countryCode))];
+    const byCountry = new Map<string, ProxyConfiguration>();
 
-    try {
-        const configuration = await Actor.createProxyConfiguration(wanted);
-        if (!configuration) {
-            log.warning(NO_PROXY_WARNING);
-            return undefined;
-        }
-        log.info('Proxy configured', {
-            groups: wanted.apifyProxyGroups ?? null,
-            country: wanted.apifyProxyCountry ?? null,
-            custom: wanted.proxyUrls ? wanted.proxyUrls.length : 0,
-        });
-        return configuration;
-    } catch (err) {
-        log.warning(`Could not use the requested proxy: ${(err as Error).message}`);
+    for (const countryCode of countries) {
         try {
-            const fallback = await Actor.createProxyConfiguration({ useApifyProxy: true });
-            if (fallback) {
-                log.warning('Falling back to the default Apify Proxy group. eBay may block these IPs.');
-                return fallback;
+            const configuration = await Actor.createProxyConfiguration({
+                groups: ['RESIDENTIAL'],
+                countryCode,
+            });
+            if (configuration) byCountry.set(countryCode, configuration);
+        } catch (err) {
+            // Not every residential country is available on every plan - fall back rather than die.
+            log.warning(`Residential proxy for ${countryCode} unavailable: ${(err as Error).message}`);
+        }
+    }
+
+    // Requests whose country could not be configured still need an exit somewhere.
+    const fallback = byCountry.get(DEFAULT_SITE.countryCode) ?? [...byCountry.values()][0];
+
+    if (!fallback) {
+        try {
+            const generic = await Actor.createProxyConfiguration({ useApifyProxy: true });
+            if (generic) {
+                log.warning('No residential proxy available, falling back to the default Apify Proxy group.');
+                return generic;
             }
         } catch {
             // Fall through to the no-proxy warning below.
@@ -65,6 +75,20 @@ async function buildProxyConfiguration(requested?: ProxyInput): Promise<ProxyCon
         log.warning(NO_PROXY_WARNING);
         return undefined;
     }
+
+    log.info(`Using Apify RESIDENTIAL proxy, countries: ${[...byCountry.keys()].join(', ')}`);
+
+    // One country in the run means no dispatch is needed - use the configuration directly so
+    // Crawlee keeps its own session/tier handling instead of routing through a custom function.
+    if (byCountry.size === 1) return fallback;
+
+    return new ProxyConfiguration({
+        newUrlFunction: async (sessionId, options) => {
+            const url = options?.request?.url;
+            const configuration = (url ? byCountry.get(siteFor(url).countryCode) : null) ?? fallback;
+            return (await configuration.newUrl(sessionId)) ?? null;
+        },
+    });
 }
 
 let normalized: NormalizedInput;
@@ -93,7 +117,7 @@ const headless = process.env.HEADLESS !== 'false';
 log.info(`Capturing ${urls.length} URL(s)`, { ...config, maxConcurrency, maxRequestsPerCrawl, headless });
 if (!headless) log.warning('Headless mode is off - a browser window will open for every page.');
 
-const proxyConfiguration = await buildProxyConfiguration(normalized.proxyConfiguration);
+const proxyConfiguration = await buildProxyConfiguration(urls);
 
 const store = await KeyValueStore.open();
 

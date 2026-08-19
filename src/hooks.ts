@@ -1,19 +1,25 @@
-import { type PlaywrightHook, playwrightUtils } from '@crawlee/playwright';
+import type { PlaywrightHook } from '@crawlee/playwright';
 
+import { acceptLanguageFor, siteFor } from './ebay-sites.js';
 import { markPhase, resetTiming } from './timing.js';
 import type { ScreenshotConfig } from './types.js';
-import { isEbayHost, TRACKER_URL_PATTERNS } from './utils.js';
-
-const EBAY_HOME_URL = 'https://www.ebay.com';
+import { isEbayHost } from './utils.js';
 
 /**
- * Sets up the viewport, request headers and light anti-automation patches, then warms
- * the session against ebay.com so Akamai issues a real session cookie before we hit /itm/.
+ * Sets up the viewport, request headers and light anti-automation patches, then warms the
+ * session against the marketplace the request is headed for, so Akamai issues a real session
+ * cookie before we hit /itm/. The warm-up is not optional: without it item pages were measured
+ * returning HTTP 403 on every attempt.
  *
- * The warm-up costs a full extra page load, so it runs once per session rather than once
- * per request: with `useIncognitoPages` each page starts cookie-free and Crawlee re-applies
- * the session's cookie jar, so a session that is already warm stays warm. A retry always
- * warms again - the previous attempt's cookies are exactly the ones Akamai just rejected.
+ * Which origin gets warmed follows the request's own hostname. eBay scopes its cookies per
+ * domain - a cookie issued by ebay.com is never sent to .ebay.es - so warming a hard-coded
+ * ebay.com would leave every non-US capture just as cold as no warm-up at all.
+ *
+ * The warm-up costs a full extra page load, so it runs once per session *per marketplace*
+ * rather than once per request: with `useIncognitoPages` each page starts cookie-free and
+ * Crawlee re-applies the session's cookie jar, so a session already warm for a host stays warm.
+ * A retry always warms again - the previous attempt's cookies are exactly the ones Akamai just
+ * rejected.
  *
  * Note: `page.context().cookies()` is deliberately *not* used to decide *whether* to warm.
  * Crawlee applies session cookies only after the pre-navigation hooks run, so the context
@@ -30,13 +36,18 @@ export function createPreNavigationHook(config: ScreenshotConfig): PlaywrightHoo
         // eslint-disable-next-line no-param-reassign
         if (gotoOptions) gotoOptions.waitUntil = 'domcontentloaded';
 
+        const site = siteFor(request.url);
+
         await page.setViewportSize({
             width: config.viewportWidth,
             height: config.viewportHeight,
         });
 
         await page.setExtraHTTPHeaders({
-            'Accept-Language': 'en-US,en;q=0.9',
+            // Must agree with the domain. An `en-US` header on ebay.es is an odd pairing that
+            // costs fingerprint coherence on a page eBay serves in Spanish either way. Non-eBay
+            // URLs resolve to the default site, so they keep the previous `en-US` behaviour.
+            'Accept-Language': acceptLanguageFor(site),
             Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
             'Upgrade-Insecure-Requests': '1',
         });
@@ -46,18 +57,14 @@ export function createPreNavigationHook(config: ScreenshotConfig): PlaywrightHoo
             (window as unknown as Record<string, unknown>).chrome = { runtime: {} };
         });
 
-        // Analytics and ad endpoints never change what the page looks like, but they do cost
-        // load time and residential proxy traffic, which is billed per gigabyte.
-        if (config.blockTrackers) {
-            await playwrightUtils.blockRequests(page, { urlPatterns: [...TRACKER_URL_PATTERNS] });
-        }
-
         markPhase(request, 'setup');
 
-        if (!config.warmUpSession || !isEbayHost(request.url)) return;
+        if (!isEbayHost(request.url)) return;
 
         const isRetry = request.retryCount > 0;
-        if (session?.userData?.ebayWarmed === true && !isRetry) return;
+        // Keyed by host: a session warmed on ebay.com holds nothing usable for ebay.de.
+        const warmedHosts = (session?.userData?.ebayWarmedHosts ?? {}) as Record<string, boolean>;
+        if (warmedHosts[site.host] === true && !isRetry) return;
 
         if (isRetry) {
             // Drop whatever the failed attempt collected before asking for a fresh cookie.
@@ -67,12 +74,12 @@ export function createPreNavigationHook(config: ScreenshotConfig): PlaywrightHoo
                 .catch(() => undefined);
         }
 
-        log.debug(`Warming eBay session${isRetry ? ' (retry)' : ''}: ${request.url}`);
+        log.debug(`Warming eBay session on ${site.host}${isRetry ? ' (retry)' : ''}: ${request.url}`);
         // `commit` resolves as soon as the response arrives, which is when Akamai's Set-Cookie
         // headers land - waiting for the full homepage DOM costs ~12s and buys nothing. The
         // sleep afterwards is the part that matters: it lets the sensor script run and turn
         // `_abck` into a valid token. Skipping the warm-up entirely returns 403, so it stays.
-        await page.goto(EBAY_HOME_URL, { waitUntil: 'commit', timeout: 10_000 }).catch(() => undefined);
+        await page.goto(site.origin, { waitUntil: 'commit', timeout: 10_000 }).catch(() => undefined);
         await page.waitForTimeout(1500 + Math.random() * 1000);
 
         // Hand the freshly issued cookies to the Session. This warm-up is a manual `goto`,
@@ -81,14 +88,14 @@ export function createPreNavigationHook(config: ScreenshotConfig): PlaywrightHoo
         // right after this hook returns, silently undoing the warm-up on every retry.
         const fresh = await page
             .context()
-            .cookies(EBAY_HOME_URL)
+            .cookies(site.origin)
             .catch(() => []);
-        if (session && fresh.length) session.setCookies(fresh, EBAY_HOME_URL);
+        if (session && fresh.length) session.setCookies(fresh, site.origin);
 
-        // `userData` is the Session's own scratch space; the flag is what keeps the
-        // warm-up to once per session instead of once per request.
+        // `userData` is the Session's own scratch space; the map is what keeps the warm-up to
+        // once per marketplace per session instead of once per request.
         // eslint-disable-next-line no-param-reassign
-        if (session) session.userData.ebayWarmed = true;
+        if (session) session.userData.ebayWarmedHosts = { ...warmedHosts, [site.host]: true };
 
         // Only recorded when the warm-up actually ran, so its cost is attributable per request.
         markPhase(request, 'warmUp');

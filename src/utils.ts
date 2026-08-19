@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 
+import { isEbayUrl } from './ebay-sites.js';
+
 /**
  * Build a key-value-store-safe key from a URL.
  * Apify keys must match /^[a-zA-Z0-9!_.'()-]+$/ and be at most 256 characters long,
@@ -35,13 +37,11 @@ export function isHttpUrl(url: string): boolean {
     return parsed !== null && (parsed.protocol === 'http:' || parsed.protocol === 'https:');
 }
 
-/** Matches ebay.com and any subdomain of it, but not lookalikes such as notebay.com. */
-const EBAY_HOST = /(?:^|\.)ebay\.com$/i;
-
-export function isEbayHost(url: string): boolean {
-    const parsed = parseUrl(url);
-    return parsed !== null && EBAY_HOST.test(parsed.hostname);
-}
+/**
+ * True for every eBay marketplace - ebay.com, ebay.es, ebay.co.uk, benl.ebay.be and so on -
+ * but not for lookalikes such as notebay.com. See `ebay-sites.ts` for the full registry.
+ */
+export const isEbayHost = isEbayUrl;
 
 /**
  * Page-type checks are matched against the *path* of an eBay host, so an unrelated
@@ -49,7 +49,7 @@ export function isEbayHost(url: string): boolean {
  */
 function isEbayPath(url: string, pattern: RegExp): boolean {
     const parsed = parseUrl(url);
-    if (parsed === null || !EBAY_HOST.test(parsed.hostname)) return false;
+    if (parsed === null || !isEbayUrl(url)) return false;
     return pattern.test(parsed.pathname);
 }
 
@@ -105,39 +105,3 @@ export function detectBlockReason(title: string, bodyText: string): string | nul
 
     return null;
 }
-
-/**
- * Third-party hosts that only serve analytics, ads and beacons. Blocking them cuts page
- * load time and - because the Actor runs on residential proxy billed per GB - real money.
- * Anything that can affect what the page *looks like* is deliberately absent from this list.
- */
-const TRACKER_HOSTS = [
-    'google-analytics.com',
-    'googletagmanager.com',
-    'googlesyndication.com',
-    'doubleclick.net',
-    'adservice.google.',
-    'scorecardresearch.com',
-    'criteo.com',
-    'criteo.net',
-    'facebook.net',
-    'connect.facebook.com',
-    'bat.bing.com',
-    'hotjar.com',
-    'newrelic.com',
-    'nr-data.net',
-    'branch.io',
-    'omtrdc.net',
-    'demdex.net',
-    'rubiconproject.com',
-    'pubmatic.com',
-    'openx.net',
-    'taboola.com',
-    'outbrain.com',
-];
-
-/**
- * The same hosts as CDP `Network.setBlockedURLs` patterns. That API matches the whole URL,
- * so each host has to be wrapped in wildcards to match anywhere in the request URL.
- */
-export const TRACKER_URL_PATTERNS = TRACKER_HOSTS.map((host) => `*${host}*`);

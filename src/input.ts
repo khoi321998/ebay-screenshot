@@ -11,8 +11,6 @@ const DEFAULTS = {
     // The readiness gates already prove the page rendered, so this is only settle time.
     waitMs: 1000,
     maxHeightPx: 0,
-    blockTrackers: true,
-    warmUpSession: true,
     maxConcurrency: 3,
     maxRequestRetries: 5,
     maxRequestsPerCrawl: 1000,
@@ -131,12 +129,9 @@ export function normalizeInput(input: Input | null): NormalizedInput {
             viewportHeight: toInt(raw.viewportHeight, DEFAULTS.viewportHeight, 240, 4320),
             waitMs: toInt(raw.waitMs, DEFAULTS.waitMs, 0, 60_000),
             maxHeightPx: toInt(raw.maxHeightPx, DEFAULTS.maxHeightPx, 0, 32_000),
-            blockTrackers: typeof raw.blockTrackers === 'boolean' ? raw.blockTrackers : DEFAULTS.blockTrackers,
-            warmUpSession: typeof raw.warmUpSession === 'boolean' ? raw.warmUpSession : DEFAULTS.warmUpSession,
         },
         maxConcurrency: toInt(raw.maxConcurrency, DEFAULTS.maxConcurrency, 1, 10),
         maxRequestRetries: toInt(raw.maxRequestRetries, DEFAULTS.maxRequestRetries, 0, 10),
         maxRequestsPerCrawl: toInt(raw.maxRequestsPerCrawl, DEFAULTS.maxRequestsPerCrawl, 1, 1_000_000),
-        proxyConfiguration: raw.proxyConfiguration,
     };
 }

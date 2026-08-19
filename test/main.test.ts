@@ -1,13 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
+import { acceptLanguageFor, DEFAULT_SITE, resolveSite, siteFor } from '../src/ebay-sites.js';
 import { normalizeInput } from '../src/input.js';
 import {
     buildKey,
     detectBlockReason,
+    isEbayHost,
     isEbayItemUrl,
     isEbaySellerUrl,
     isHttpUrl,
-    TRACKER_URL_PATTERNS,
     withDisableRedirect,
 } from '../src/utils.js';
 
@@ -56,6 +57,14 @@ describe('url helpers', () => {
         expect(isEbayItemUrl('https://notebay.com/itm/123')).toBe(false);
     });
 
+    it('recognises page types on every marketplace, not just ebay.com', () => {
+        expect(isEbayItemUrl('https://www.ebay.es/itm/296977871958')).toBe(true);
+        expect(isEbayItemUrl('https://www.ebay.co.uk/itm/296977871958')).toBe(true);
+        expect(isEbaySellerUrl('https://www.ebay.de/str/somestore')).toBe(true);
+        expect(isEbayHost('https://benl.ebay.be/itm/1')).toBe(true);
+        expect(isEbayHost('https://notebay.com/itm/1')).toBe(false);
+    });
+
     it('appends disableRedirect to record URLs', () => {
         expect(withDisableRedirect('https://api.apify.com/v2/key-value-stores/x/records/y')).toContain(
             '?disableRedirect=true',
@@ -63,11 +72,35 @@ describe('url helpers', () => {
         expect(withDisableRedirect('https://api.apify.com/v2/records/y?a=1')).toContain('&disableRedirect=true');
     });
 
-    it('exposes tracker patterns in the wildcard form CDP expects', () => {
-        expect(TRACKER_URL_PATTERNS.length).toBeGreaterThan(0);
-        for (const pattern of TRACKER_URL_PATTERNS) {
-            expect(pattern.startsWith('*') && pattern.endsWith('*')).toBe(true);
-        }
+});
+
+describe('ebay marketplace registry', () => {
+    it('maps a known marketplace to its own country, language and origin', () => {
+        const es = siteFor('https://www.ebay.es/itm/296977871958');
+        expect(es).toMatchObject({ host: 'www.ebay.es', origin: 'https://www.ebay.es', countryCode: 'ES', lang: 'es' });
+
+        const uk = siteFor('https://www.ebay.co.uk/itm/1');
+        expect(uk.countryCode).toBe('GB');
+
+        // Regional-language host: the language differs from what the TLD alone implies.
+        expect(siteFor('https://befr.ebay.be/itm/1').lang).toBe('fr');
+    });
+
+    it('keeps the caller host for a subdomain it has no explicit entry for', () => {
+        const mobile = siteFor('https://m.ebay.de/itm/1');
+        expect(mobile).toMatchObject({ host: 'm.ebay.de', origin: 'https://m.ebay.de', countryCode: 'DE' });
+    });
+
+    it('falls back to ebay.com for unknown and non-eBay hosts', () => {
+        expect(resolveSite('https://example.com/page')).toBeNull();
+        // The fallback is what keeps a plain website capture on US proxy and en-US headers.
+        expect(siteFor('https://example.com/page')).toBe(DEFAULT_SITE);
+        expect(siteFor('not a url')).toBe(DEFAULT_SITE);
+    });
+
+    it('builds an Accept-Language header that agrees with the domain', () => {
+        expect(acceptLanguageFor(siteFor('https://www.ebay.es/itm/1'))).toBe('es-ES,es;q=0.9,en;q=0.8');
+        expect(acceptLanguageFor(siteFor('https://www.ebay.com/itm/1'))).toBe('en-US,en;q=0.9');
     });
 });
 
@@ -108,8 +141,6 @@ describe('normalizeInput', () => {
             viewportWidth: 1920,
             viewportHeight: 1080,
             waitMs: 1000,
-            blockTrackers: true,
-            warmUpSession: true,
             // Off by default: capturing less than the whole page must be an explicit choice.
             maxHeightPx: 0,
         });
@@ -157,8 +188,11 @@ describe('normalizeInput', () => {
         expect(normalizeInput({ urls: [ITEM_URL], maxHeightPx: -1 }).config.maxHeightPx).toBe(0);
     });
 
-    it('allows the eBay warm-up to be switched off', () => {
-        expect(normalizeInput({ urls: [ITEM_URL], warmUpSession: false }).config.warmUpSession).toBe(false);
+    it('leaves URLs exactly as provided, query string included', () => {
+        // Nothing is appended and nothing is stripped: `?var=` selects a listing variation, so a
+        // rewritten URL would capture a different page than the caller asked for.
+        const withQuery = `${ITEM_URL}?var=123456789&hash=item45`;
+        expect(normalizeInput({ urls: [withQuery] }).urls).toEqual([withQuery]);
     });
 
     it('throws when there is nothing to capture', () => {

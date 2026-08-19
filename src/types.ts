@@ -10,14 +10,6 @@ export interface UrlSource {
     method?: string;
 }
 
-/** Proxy settings as produced by the `proxy` input editor. */
-export interface ProxyInput {
-    useApifyProxy?: boolean;
-    apifyProxyGroups?: string[];
-    apifyProxyCountry?: string;
-    proxyUrls?: string[];
-}
-
 /** Raw input as provided by the user - every field is optional and untrusted. */
 export interface Input {
     /** Shorthand list of URLs, e.g. ["https://www.ebay.com/itm/296977871958"]. */
@@ -32,9 +24,6 @@ export interface Input {
     maxConcurrency?: number;
     maxRequestRetries?: number;
     maxRequestsPerCrawl?: number;
-    blockTrackers?: boolean;
-    warmUpSession?: boolean;
-    proxyConfiguration?: ProxyInput;
 }
 
 /** Per-page capture settings, resolved from the input and passed to the handler. */
@@ -45,8 +34,6 @@ export interface ScreenshotConfig {
     waitMs: number;
     /** Hard cap on captured height in pixels; 0 means "as tall as the page is". */
     maxHeightPx: number;
-    blockTrackers: boolean;
-    warmUpSession: boolean;
 }
 
 /** Input after validation and defaulting - safe to use without further checks. */
@@ -58,7 +45,6 @@ export interface NormalizedInput {
     maxConcurrency: number;
     maxRequestRetries: number;
     maxRequestsPerCrawl: number;
-    proxyConfiguration?: ProxyInput;
 }
 
 /** Shape of a single dataset entry, mirroring Apify's Website Screenshot Generator. */

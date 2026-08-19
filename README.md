@@ -2,7 +2,9 @@
 
 **eBay Screenshot** captures **full-page screenshots of eBay item and seller pages** — and of any other website you point it at — and saves each capture as a **PNG** file in the run's key-value store. Every dataset row is a simple `{ url, screenshotUrl }` pair, the same output shape as Apify's Website Screenshot Generator, so it drops into existing pipelines without changes.
 
-eBay is aggressively protected by Akamai and renders prices, images and seller cards with JavaScript. This Actor handles that for you: it warms an [eBay](https://www.ebay.com) session before loading item pages, routes traffic through US residential proxies, waits for the price/title elements to actually render, and scrolls the page to trigger lazy-loaded images before the shot is taken.
+eBay is aggressively protected by Akamai and renders prices, images and seller cards with JavaScript. This Actor handles that for you: it warms an [eBay](https://www.ebay.com) session before loading item pages, routes traffic through residential proxies, waits for the price/title elements to actually render, and scrolls the page to trigger lazy-loaded images before the shot is taken.
+
+**Every eBay marketplace works** — `ebay.com`, `ebay.es`, `ebay.de`, `ebay.co.uk`, `ebay.com.au`, `benl.ebay.be` and the rest. The capture stays on the domain you give it, and everything locale-dependent follows that hostname automatically: the proxy exits in **that marketplace's own country**, the `Accept-Language` header matches the site, and the anti-bot warm-up hits that same domain. This matters — a US IP on `ebay.es` gets a page quoting US delivery estimates and prices converted to USD, so the screenshot would document a listing no Spanish buyer ever sees. URLs are used **exactly as you provide them**: nothing is appended to the query string and nothing is stripped, so a `?var=` variation link captures that variation.
 
 Running it on the Apify platform gives you API access, scheduling, integrations (Zapier, Make, Google Drive, webhooks), automatic proxy rotation and run monitoring out of the box.
 
@@ -34,24 +36,27 @@ All fields are optional except the URLs. Set them in the Input tab or via the AP
 | `viewportHeight`      | integer | `1080`         | Browser viewport height in pixels.                                                                                                                    |
 | `waitMs`              | integer | `1000`         | Extra settle time before the screenshot is taken, on top of the readiness checks.                                                                     |
 | `maxHeightPx`         | integer | `0`            | Cap the captured height of full-page screenshots; `0` captures the whole page. Useful for framing, see the tips below.                                |
-| `blockTrackers`       | boolean | `true`         | Block analytics, ad and beacon requests. Speeds up capture and cuts proxy traffic without changing how the page looks.                                |
-| `warmUpSession`       | boolean | `true`         | Load the eBay homepage once per proxy session so anti-bot cookies are issued before item pages are opened.                                            |
 | `maxConcurrency`      | integer | `3`            | Pages captured in parallel. Keep it low to avoid blocks.                                                                                              |
 | `maxRequestRetries`   | integer | `5`            | Retries before a page is reported as an error.                                                                                                        |
 | `maxRequestsPerCrawl` | integer | `1000`         | Safety cap on pages per run, retries included, so a huge URL list cannot consume the whole budget.                                                    |
-| `proxyConfiguration`  | object  | US residential | Proxy settings. The default is what eBay tolerates; residential traffic is billed per GB, so a cheaper group is worth considering for non-eBay pages. |
 
-By default the Actor runs through Apify Proxy on **US residential** IPs — eBay blocks nearly everything else. If your account cannot use residential proxies the run falls back to the default proxy group with a warning rather than failing outright, though eBay will likely block those IPs.
+### Proxy and marketplace — no setting to get wrong
+
+There is no proxy option, and the anti-bot warm-up is not a switch either. Both are derived from the URLs you submit, because both only have one correct value: eBay blocks nearly everything that is not a residential IP, and it blocks item pages outright unless the session already carries cookies from that domain. The Actor therefore always runs on Apify **residential** proxies, exiting in the country of each URL's marketplace — `ebay.de` over a German IP, `ebay.com.au` over an Australian one, one configuration per country in the run, chosen per request. Non-eBay URLs, and eBay domains not in the registry, fall back to the US.
+
+If your account cannot use residential proxies in a given country, that country is skipped with a warning and its URLs use the run's remaining proxy rather than failing. If residential is unavailable entirely, the run falls back to the default Apify Proxy group — eBay will likely block those IPs, but the run still starts.
 
 Example input:
 
 ```json
 {
-    "startUrls": [{ "url": "https://www.ebay.com/itm/296977871958" }],
+    "startUrls": [{ "url": "https://www.ebay.es/itm/327221064373" }, { "url": "https://www.ebay.com/itm/296977871958" }],
     "fullPage": true,
     "maxHeightPx": 4000
 }
 ```
+
+Those two URLs are captured in the same run, the first over a Spanish IP and the second over a US one.
 
 ## Output
 
@@ -85,14 +90,16 @@ The image files themselves live in the run's default key-value store under keys 
 
 Cost is driven by browser compute time and residential proxy traffic. A measured eBay item capture takes about **16 seconds** end to end, of which roughly 8 s is navigation, 5 s is the one-off session warm-up and under 3 s is the actual screenshot work. The warm-up runs once per proxy session rather than per page, so its share shrinks as a batch grows.
 
-The figure that really moves cost is retries: a navigation that times out spends the full `navigationTimeoutSecs` before the attempt is thrown away, which can cost more than several successful captures. Keeping `blockTrackers` on and letting blocked sessions rotate quickly matters more than shaving the individual phases. Large batches are dominated by residential proxy traffic, so switch `proxyConfiguration` to a cheaper group when your targets are not protected.
+The figure that really moves cost is retries: a navigation that times out spends the full `navigationTimeoutSecs` before the attempt is thrown away, which can cost more than several successful captures. Letting blocked sessions rotate quickly matters more than shaving the individual phases. Large batches are dominated by residential proxy traffic, which is billed per gigabyte.
+
+Mixing marketplaces in one run costs a little more than splitting them: the warm-up is cached per session **per domain**, so a session that captures both `ebay.es` and `ebay.de` pays for two warm-ups instead of one. Grouping URLs by marketplace across separate runs avoids that, though at a handful of seconds per session it is rarely worth the trouble.
 
 ## Tips and advanced options
 
 - **Keep concurrency low.** eBay blocks aggressively; 1–3 parallel pages with residential IPs is the sweet spot.
 - **`maxHeightPx` is a framing option, not a speed fix.** Measured eBay pages run 3 500–4 600 px tall and encoding one takes well under a second, so capping the height saves little time. Use it when you want the listing without the recommendation carousels below it.
 - **Turn off `fullPage`** if you only need the above-the-fold view — it skips the lazy-load scroll.
-- **Leave `warmUpSession` on for eBay.** It is not optional: with the warm-up disabled, item pages were measured returning HTTP 403 from Akamai on every attempt, while the same URL succeeded first try with it enabled. Turn it off only for non-eBay targets, where it does nothing anyway.
+- **Use the marketplace URL you actually want.** `ebay.com` and `ebay.es` show the same item at different prices, in different languages, with different delivery estimates. The Actor never rewrites the host, so whichever domain you submit is the one that gets captured.
 - **Raise `waitMs`** if image carousels or price widgets are still blank in the capture.
 - **Non-eBay URLs work too.** Site-specific readiness gates and anti-bot detection only apply to eBay; every other URL falls back to `domcontentloaded` plus `waitMs`.
 - **Blocked pages are retried, not returned.** When eBay serves an anti-bot interstitial (it does so with HTTP 200, so a status check never sees it), the Actor discards the page, retires the proxy session and retries on a fresh IP instead of saving a screenshot of the challenge.
@@ -123,8 +130,9 @@ apify push        # deploy to the Apify platform
 
 Source layout:
 
-- `src/main.ts` — Actor entry point: input, proxy, crawler wiring.
+- `src/main.ts` — Actor entry point: input, per-country proxy, crawler wiring.
 - `src/input.ts` — input validation and defaults.
 - `src/routes.ts` — the screenshot request handler.
 - `src/hooks.ts` — pre/post navigation hooks (viewport, headers, eBay session warm-up, failure logging).
+- `src/ebay-sites.ts` — marketplace registry: hostname → country, language, origin. Mirrored from the sibling `ebay-data-scraper` Actor; keep the two in sync.
 - `src/utils.ts` — key-value store key building and URL helpers.
