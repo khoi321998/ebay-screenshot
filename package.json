@@ -34,7 +34,7 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "test": "vitest run",
-        "postinstall": "npx playwright install chromium"
+        "install-browsers": "playwright install chromium"
     },
     "author": "It's not you it's me",
     "license": "ISC"

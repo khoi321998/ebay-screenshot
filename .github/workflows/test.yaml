@@ -14,8 +14,9 @@ jobs:
               with:
                   node-version: 24
                   cache: npm
-            # `npm ci` already installs Chromium through this project's postinstall script,
-            # so an explicit `playwright install` here would just download it a second time.
             - run: npm ci
+            # Chromium is not installed by npm install (that would break the Apify Docker
+            # build, where the base image ships it already), so install it explicitly here.
+            - run: npm run install-browsers
             - run: npm run build
             - run: npm test
